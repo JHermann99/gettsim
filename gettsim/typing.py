@@ -1,4 +1,5 @@
 import numpy as np
+from pandas import to_datetime
 from pandas.api.types import is_bool_dtype
 from pandas.api.types import is_datetime64_any_dtype
 from pandas.api.types import is_float_dtype
@@ -31,3 +32,47 @@ def check_if_series_has_internal_type(series, internal_type):
     else:
         raise ValueError(f"The internal type {internal_type} is not defined.")
     return out
+
+
+def convert_series_to_internal_type(series, internal_type):
+    """Convert data type of series to the internal type of gettsim.
+
+    Parameters
+    ----------
+    series : pd.Series
+        Some data series.
+    internal_type : TypeVar
+        One of the internal gettsim types.
+
+    Returns
+    -------
+    isconverted : bool
+        True if type conversion was necessary
+    series : pd.Series
+        Converted series if isconverted == True, else original series
+    """
+
+    isconverted = True
+
+    try:
+        if internal_type == float and not is_float_dtype(series):
+            series = series.astype(float)
+        elif internal_type == int and not is_integer_dtype(series):
+            # as precautionary measure: round before converting to int
+            series = round(series.astype(float)).astype(int)
+        elif internal_type == bool and not is_bool_dtype(series):
+            series = series.astype(bool)
+        elif internal_type == np.datetime64 and not is_datetime64_any_dtype(series):
+            series = to_datetime(series)
+        else:
+            isconverted = False
+    except ValueError:
+        raise ValueError(
+            f"The column 'series.name' of your data has the "
+            f"dtype '{series.dtype}'. It could not be converted to "
+            f"the required internal type '{internal_type}'. "
+            f"You can find more information on the gettsim types in "
+            f"the documentation."
+        )
+
+    return isconverted, series

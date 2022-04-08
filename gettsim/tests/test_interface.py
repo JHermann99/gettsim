@@ -3,19 +3,23 @@ from contextlib import ExitStack as does_not_raise  # noqa: N813
 import numpy as np
 import pandas as pd
 import pytest
+from pandas.api.types import is_bool_dtype
+from pandas.api.types import is_datetime64_any_dtype
+from pandas.api.types import is_float_dtype
+from pandas.api.types import is_integer_dtype
 
 from gettsim import compute_taxes_and_transfers
 from gettsim import test
 from gettsim.config import ROOT_DIR
-from gettsim.functions_loader import load_user_and_internal_functions
 from gettsim.interface import _fail_if_columns_overriding_functions_are_not_in_data
 from gettsim.interface import _fail_if_columns_overriding_functions_are_not_in_functions
-from gettsim.interface import _fail_if_datatype_is_false
 from gettsim.interface import _fail_if_functions_and_columns_overlap
 from gettsim.interface import _fail_if_group_variables_not_constant_within_groups
 from gettsim.interface import _fail_if_pid_is_non_unique
 from gettsim.interface import _partial_parameters_to_functions
+from gettsim.interface import convert_data_to_internal_types
 from gettsim.shared import add_rounding_spec
+from gettsim.typing import convert_series_to_internal_type
 
 
 @pytest.fixture(scope="module")
@@ -49,18 +53,58 @@ func_after_partial = _partial_parameters_to_functions(
 )["test_func"]
 
 
-def test_fail_if_datatype_is_false(input_data):
+def test_datatype_conversion(input_data):
+    # test default data
     with does_not_raise():
-        _fail_if_datatype_is_false(input_data, [], [])
+        convert_data_to_internal_types(input_data, [], [])
+
+    # test conversion to bool from float
+    altered_data = input_data.copy(deep=True)
+    altered_data["kind"] = altered_data["kind"].astype("float")
+    altered_data = convert_data_to_internal_types(altered_data, [], [])
+    assert is_bool_dtype(altered_data.loc[:, "kind"]) is True
+
+    # test conversion to int from float
+    altered_data = input_data.copy(deep=True)
+    altered_data["geburtsjahr"] = altered_data["geburtsjahr"].astype("float")
+    altered_data = convert_data_to_internal_types(altered_data, [], [])
+    assert is_integer_dtype(altered_data.loc[:, "geburtsjahr"]) is True
+
+    # test conversion to int from bool
+    altered_data = input_data.copy(deep=True)
+    altered_data["geburtsjahr"] = altered_data["geburtsjahr"].astype("bool")
+    altered_data = convert_data_to_internal_types(altered_data, [], [])
+    assert is_integer_dtype(altered_data.loc[:, "geburtsjahr"]) is True
+
+    # test conversion to float from int
+    altered_data = input_data.copy(deep=True)
+    altered_data["bruttolohn_m"] = altered_data["bruttolohn_m"].astype("int")
+    altered_data = convert_data_to_internal_types(altered_data, [], [])
+    assert is_float_dtype(altered_data.loc[:, "bruttolohn_m"]) is True
+
+    # test conversion to float from bool
+    altered_data = input_data.copy(deep=True)
+    altered_data["bruttolohn_m"] = altered_data["bruttolohn_m"].astype("bool")
+    altered_data = convert_data_to_internal_types(altered_data, [], [])
+    assert is_float_dtype(altered_data.loc[:, "bruttolohn_m"]) is True
+
+    # test conversion to datetime from int
+    altered_data = input_data.copy(deep=True)
+    gebjahr = altered_data.loc[:, "geburtsjahr"]
+    _, gebjahr_dt = convert_series_to_internal_type(gebjahr, np.datetime64)
+    assert is_datetime64_any_dtype(gebjahr_dt.dtype) is True
+
+    # test conversion to int from string
+    altered_data = input_data.copy(deep=True)
+    gebjahr = altered_data.loc[:, "geburtsjahr"].astype("string")
+    altered_data = convert_data_to_internal_types(altered_data, [], [])
+    assert is_integer_dtype(altered_data.loc[:, "geburtsjahr"]) is True
+
+    # test impossible conversion
     with pytest.raises(ValueError):
         altered_data = input_data.copy(deep=True)
-        altered_data["alter"] = altered_data["alter"].astype(float)
-        _fail_if_datatype_is_false(altered_data, [], [])
-    with pytest.raises(ValueError):
-        _, functions = load_user_and_internal_functions(None)
-        columns = ["abgelt_st_tu"]
-        new_data = pd.DataFrame(data=[True, False], columns=columns, dtype=bool)
-        _fail_if_datatype_is_false(new_data, columns, functions)
+        altered_data.loc[0, "geburtsjahr"] = "Hallo"
+        convert_data_to_internal_types(altered_data, [], [])
 
 
 @pytest.mark.parametrize(
